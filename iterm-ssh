@@ -47,9 +47,11 @@ def parser(configfile):
 def setup_ssh_tunnel(host, ssh_client):
     print("Setting up SSH tunnel to '{0}'".format(host), file=sys.stderr)
 
-    debug("Tearing down existing control master")
-    subprocess.check_output([ssh_client, "-O", "stop", host],
-            stderr=subprocess.STDOUT)
+    debug("Tearing down any existing control master")
+    devnull = open(os.devnull, 'w')
+    subprocess.call([ssh_client, "-O", "stop", host], stdout=devnull,
+            stderr=devnull)
+    devnull.close()
 
     debug("Launching tunnel")
     subprocess.check_output([ssh_client, "-n", "-N", host])
