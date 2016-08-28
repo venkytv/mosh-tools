@@ -1,0 +1,107 @@
+#!/usr/bin/env python
+from __future__ import print_function
+
+import argparse
+import os
+import re
+import subprocess
+import sys
+
+from ConfigParser import SafeConfigParser
+
+DEFAULT = '_defaults'
+DEBUG = False
+
+BUILTIN_DEFAULTS = {
+        'remote_command':   '',
+        'mosh_server':      '/usr/bin/mosh-server',
+        'ssh_client':       '/usr/bin/ssh',
+        'mosh_client':      '/usr/bin/mosh',
+        'client':           'ssh',
+        'setup_ssh_tunnel': False,
+}
+
+def debug(*msg):
+    if not DEBUG:
+        return
+    print("DEBUG:", *msg, file=sys.stderr)
+
+def parser(configfile):
+    p = SafeConfigParser()
+    p.read(configfile)
+
+    def get(host, param, boolean=False):
+        val = BUILTIN_DEFAULTS[param]
+        for section in [host, DEFAULT]:
+            if p.has_section(host):
+                if p.has_option(section, param):
+                    if boolean:
+                        val = p.getboolean(section, param)
+                    else:
+                        val = p.get(section, param)
+                    break
+        return val
+
+    return get
+
+def setup_ssh_tunnel(host, ssh_client):
+    print("Setting up SSH tunnel to '{0}'".format(host), file=sys.stderr)
+
+    debug("Tearing down existing control master")
+    subprocess.check_output([ssh_client, "-O", "stop", host],
+            stderr=subprocess.STDOUT)
+
+    debug("Launching tunnel")
+    subprocess.check_output([ssh_client, "-n", "-N", host])
+
+    debug("Checking tunnel")
+    p = subprocess.Popen([ssh_client, "-O", "check", host], stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT)
+    (stdout, stderr) = p.communicate()
+    return re.match(r'Master running', stdout)
+
+def connect_to_host(host, param):
+    clname = param(host, 'client')
+    ssh_client = param(host, 'ssh_client')
+    if clname == 'mosh' and param(host, 'setup_ssh_tunnel', boolean=True):
+        if not setup_ssh_tunnel(host, ssh_client):
+            sys.exit("Failed to set up SSH tunnel to '{0}'".format(host))
+        
+    print("Launching {0} connection to '{1}'".format(clname, host),
+            file=sys.stderr)
+
+    client = param(host, "{0}_client".format(clname))
+    command = [ "{0}".format(client) ]
+
+    if (clname == 'mosh'):
+        server = param(host, 'mosh_server')
+        command.append("--server=LANG=en_US.UTF-8 {0}".format(server))
+        command.append("--ssh={0}".format(ssh_client))
+    else:
+        # Force pseudo-terminal allocation
+        command.append("-t")
+
+    command.append(host)
+
+    remote_command = param(host, 'remote_command')
+    if remote_command:
+        command.append(remote_command)
+
+    debug(command)
+    subprocess.call(command)
+
+argparser = argparse.ArgumentParser()
+argparser.add_argument("host")
+argparser.add_argument("-d", "--debug", help="Display debug messages",
+        action="store_true")
+argparser.add_argument("-c", "--config",
+        default=os.path.join(os.environ['HOME'], '.iterm-ssh.conf'),
+        help="Use specified config file instead of the default")
+args = argparser.parse_args()
+
+DEBUG = args.debug
+
+debug("Using config file:", args.config)
+param = parser(args.config)
+
+connect_to_host(args.host, param)
