@@ -13,12 +13,13 @@ DEFAULT = '_defaults'
 DEBUG = False
 
 BUILTIN_DEFAULTS = {
-        'remote_command':   '',
-        'mosh_server':      '/usr/bin/mosh-server',
-        'ssh_client':       '/usr/bin/ssh',
-        'mosh_client':      '/usr/bin/mosh',
-        'client':           'ssh',
-        'setup_ssh_tunnel': False,
+        'remote_command':       '',
+        'mosh_server':          '/usr/bin/mosh-server',
+        'ssh_client':           '/usr/bin/ssh',
+        'mosh_client':          '/usr/bin/mosh',
+        'client':               'ssh',
+        'setup_ssh_tunnel':     False,
+        'use_agent_forwarding': False,
 }
 
 def debug(*msg):
@@ -79,6 +80,10 @@ def connect_to_host(host, param):
         server = param(host, 'mosh_server')
         command.append("--server=LANG=en_US.UTF-8 {0}".format(server))
         command.append("--ssh={0}".format(ssh_client))
+
+        if param(host, 'use_agent_forwarding', boolean=True):
+            command.append("--forward-agent")
+
     else:
         # Force pseudo-terminal allocation
         command.append("-t")
